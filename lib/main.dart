@@ -16,13 +16,16 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Сообщения',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const MessageScreen(),
+      home: const AuthTabs(), // Начинаем с экрана авторизации
     );
   }
 }
 
+// ============ ЭКРАН СООБЩЕНИЙ (после входа) ============
 class MessageScreen extends StatefulWidget {
-  const MessageScreen({super.key});
+  final String username; // можно передавать, если нужно
+
+  const MessageScreen({super.key, this.username = ''});
 
   @override
   State<MessageScreen> createState() => _MessageScreenState();
@@ -32,7 +35,6 @@ class _MessageScreenState extends State<MessageScreen> {
   final supabase = SupabaseClient(supabaseUrl, supabaseAnonKey);
   final messageCtrl = TextEditingController();
 
-  // Функция для показа диалога подтверждения
   Future<void> _showConfirmationDialog(String message) async {
     return showDialog<void>(
       context: context,
@@ -43,15 +45,13 @@ class _MessageScreenState extends State<MessageScreen> {
           actions: <Widget>[
             TextButton(
               child: const Text('Нет'),
-              onPressed: () {
-                Navigator.of(context).pop(); // Закрываем диалог
-              },
+              onPressed: () => Navigator.of(context).pop(),
             ),
             ElevatedButton(
               child: const Text('Да'),
               onPressed: () {
-                Navigator.of(context).pop(); // Закрываем диалог
-                _sendMessage(message);       // Отправляем сообщение
+                Navigator.of(context).pop();
+                _sendMessage(message);
               },
             ),
           ],
@@ -60,7 +60,6 @@ class _MessageScreenState extends State<MessageScreen> {
     );
   }
 
-  // Функция отправки сообщения в Supabase
   void _sendMessage(String message) {
     supabase
         .from('messages')
@@ -70,7 +69,7 @@ class _MessageScreenState extends State<MessageScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Сообщение добавлено')),
           );
-          setState(() {}); // Обновляем список
+          setState(() {});
         })
         .catchError((e) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -82,7 +81,20 @@ class _MessageScreenState extends State<MessageScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Сообщения')),
+      appBar: AppBar(
+        title: const Text('Сообщения'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const AuthTabs()),
+              );
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -111,7 +123,6 @@ class _MessageScreenState extends State<MessageScreen> {
               ],
             ),
           ),
-
           Expanded(
             child: FutureBuilder<List<dynamic>>(
               future: _loadMessages(),
@@ -149,5 +160,197 @@ class _MessageScreenState extends State<MessageScreen> {
   Future<List<dynamic>> _loadMessages() async {
     final data = await supabase.from('messages').select().order('created_at', ascending: false);
     return data as List<dynamic>;
+  }
+}
+
+// ============ ЭКРАН АВТОРИЗАЦИИ ============
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final supabase = SupabaseClient(supabaseUrl, supabaseAnonKey);
+  final usernameCtrl = TextEditingController();
+  final passwordCtrl = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Авторизация')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: usernameCtrl,
+              decoration: const InputDecoration(labelText: 'Логин'),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Пароль'),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () async {
+                final username = usernameCtrl.text.trim();
+                final password = passwordCtrl.text.trim();
+
+                if (username.isEmpty || password.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Заполните все поля')),
+                  );
+                  return;
+                }
+
+                try {
+                  final data = await supabase
+                      .from('users')
+                      .select()
+                      .eq('username', username)
+                      .eq('password', password);
+
+                  if ((data as List).isNotEmpty) {
+                    // ✅ УСПЕШНЫЙ ВХОД → ПЕРЕХОД НА СООБЩЕНИЯ
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MessageScreen(username: username),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('❌ Неверный логин или пароль')),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ошибка: $e')),
+                  );
+                }
+              },
+              child: const Text('Войти'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============ ЭКРАН РЕГИСТРАЦИИ ============
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final supabase = SupabaseClient(supabaseUrl, supabaseAnonKey);
+  final usernameCtrl = TextEditingController();
+  final passwordCtrl = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Регистрация')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: usernameCtrl,
+              decoration: const InputDecoration(labelText: 'Логин'),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Пароль'),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () async {
+                final username = usernameCtrl.text.trim();
+                final password = passwordCtrl.text.trim();
+
+                if (username.isEmpty || password.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Заполните все поля')),
+                  );
+                  return;
+                }
+
+                try {
+                  await supabase
+                      .from('users')
+                      .insert({'username': username, 'password': password});
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('✅ Пользователь зарегистрирован')),
+                  );
+                  usernameCtrl.clear();
+                  passwordCtrl.clear();
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ошибка: $e')),
+                  );
+                }
+              },
+              child: const Text('Зарегистрироваться'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============ ВКЛАДКИ АВТОРИЗАЦИИ/РЕГИСТРАЦИИ ============
+class AuthTabs extends StatefulWidget {
+  const AuthTabs({super.key});
+
+  @override
+  State<AuthTabs> createState() => _AuthTabsState();
+}
+
+class _AuthTabsState extends State<AuthTabs> {
+  int _currentIndex = 0;
+
+  final List<Widget> _screens = const [
+    LoginScreen(),
+    RegisterScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.login),
+            label: 'Авторизация',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_add),
+            label: 'Регистрация',
+          ),
+        ],
+      ),
+    );
   }
 }
